@@ -3,10 +3,11 @@ import pickle
 
 import pandas as pd
 
-def get_data(raw_dir):
-    train_X = pd.read_csv(os.path.join(raw_dir, "train_X.csv"), index_col=False)
-    train_y = pd.read_csv(os.path.join(raw_dir, "train_y.csv"), index_col=False)
-    test_X = pd.read_csv(os.path.join(raw_dir, "test_X.csv"), index_col=False)
+
+def get_data(data_files, data_dir):
+    train_X = pd.read_csv(os.path.join(os.getcwd(), data_dir, data_files[0]))
+    train_y = pd.read_csv(os.path.join(os.getcwd(), data_dir, data_files[1]))
+    test_X = pd.read_csv(os.path.join(os.getcwd(), data_dir, data_files[2]))
     return train_X, train_y, test_X
 
 
