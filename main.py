@@ -1,41 +1,53 @@
 import pandas as pd
 import os
 
+from data import get_data
+import feature_extraction
+from constants import LABEL_COL, TEXT_COLS, config_file
+from train_test_val_split import data_split
+import configparser
+from sklearn.feature_selection import chi2
+from sklearn.feature_selection import SelectKBest
+import warnings
+from models import StackedModel, fit_catboost
+
+
 from catboost import CatBoostClassifier
 from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.naive_bayes import MultinomialNB
+from xgboost import XGBClassifier
 
-from sklearn.feature_selection import chi2
-from sklearn.feature_selection import SelectKBest
-
-import warnings
-
-from Constants import RAW_DIR, LABEL_COL
-from data import get_data
-from features import tokenize_2
-from models import StackedModel, fit_catboost
 
 warnings.filterwarnings('ignore')
 
 
-def get_validation(train_df):
-    last_year = train_df['year'].max()
-    train_df_before = train_df[train_df['year'] < last_year]
-    train_after, validation = train_test_split(train_df[train_df['year'] == last_year], test_size=0.2)
-    return pd.concat([train_df_before, train_after]), validation
+def get_preprocessed_data(config_file, text_cols):
+    """
+    upload data and extract features
+    """
+    # preprocessing and feature extraction
+    config = configparser.ConfigParser()
+    config.read(config_file)
+    data_dir = config["DEFAULT"]["data_dir"]
+    data_files = config["DEFAULT"]["data_file_names"].split(",")
+    train_X_raw, train_y_raw, test_X_raw = get_data(data_files, data_dir)
+
+    common_words_subject_phishing, common_words_subject_ham = \
+        feature_extraction.count_common_words_in_subject(train_X_raw, train_y_raw)
+    X = feature_extraction.create_features(train_X_raw, text_cols,
+                                           common_words_subject_phishing, common_words_subject_ham)
+    y = train_y_raw[LABEL_COL]
+    X_unlabeled = feature_extraction.create_features(test_X_raw, text_cols,
+                                                     common_words_subject_phishing, common_words_subject_ham)
+
+    return X, y, X_unlabeled
 
 
-def make_prediction(train_df, test_X, model_packs, feature_extractors, start_year=2017, end_year=2019,
-                    debug=True, apply_chi2=True):
-    if debug:
-        train_df = train_df.sample(5000)
-    train_df_filter = train_df[(train_df['year'] >= start_year) & (train_df['year'] <= end_year)]
-    train_df_filter, validation_df_filter = get_validation(train_df_filter)
-    train_X, train_y = train_df_filter['description'], train_df_filter[LABEL_COL]
-    validation_X, validation_y = validation_df_filter['description'], validation_df_filter[LABEL_COL]
+def make_prediction(X, y, test_X, model_packs, apply_chi2=True):
+
+    X_train, X_val, X_test, y_train, y_val, y_test = data_split(X, y, TEXT_COLS)
 
     for fe_name, fe_params in feature_extractors.items():
         fe = fe_params['class'](**fe_params['args'])
@@ -96,34 +108,24 @@ def make_prediction(train_df, test_X, model_packs, feature_extractors, start_yea
         test_X.reset_index()[['index', LABEL_COL]].to_csv(os.path.join(RAW_DIR, f"stacked_{fe_name}_submission.csv"),
                                                           index=False)
 
+
 if __name__ == "__main__":
-    model_packs_ensemble = {
-        "MultinomialNB": {"class": MultinomialNB, "args": {}, "hyper": {"alpha": [0.1, 0.25, 0.5, 0.75, 1.0]}},
-        "AdaBoostClassifier": {"class": AdaBoostClassifier,
-                               "args": {"n_estimators": 20, "random_state": 0},
-                               "hyper": {"learning_rate": [0.1, 0.25, 0.5, 0.75, 1.0]}},
-        "RandomForestClassifier": {"class": RandomForestClassifier,
-                                   "args": {"n_estimators": 20, "random_state": 0, "n_jobs": -1},
-                                   "hyper": {"criterion": ["gini", "entropy"],
-                                             "max_features": ["sqrt", "log2"],
-                                             "max_samples": [None, 0.5]
-                                             }},
-        "CatBoostClassifier": {"class": CatBoostClassifier, "args": {"n_estimators": 50, "random_state": 0}, "hyper": {
-            "depth": [6, 8], "l2_leaf_reg": [1.0, 0.2, 3.0, 4.0]
-        }
-                               }
-    }
+    scoring = {'accuracy': make_scorer(accuracy_score),
+               'precision': make_scorer(precision_score),
+               'recall': make_scorer(recall_score),
+               'f1_score': make_scorer(f1_score)}
+    models = {''}
+    log_model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=10000))
+    svc_model = make_pipeline(StandardScaler(), SVC())
+    dtr_model = DecisionTreeClassifier()
+    rfc_model = RandomForestClassifier()
+    gnb_model = GaussianNB()
+    xgb_model = XGBClassifier(eval_metric='error')
+    adb_model = AdaBoostClassifier(n_estimators=100)
 
-    feature_extractors = {
-        "tfidf": {
-            "class": TfidfVectorizer,
-            "args": {"stop_words": "english", "lowercase": True,
-                     'max_df': 0.05, 'min_df': 10, 'tokenizer': tokenize_2, 'ngram_range': (1, 2)
-                     }
-        }
-    }
+    # import data
 
-    train_X, train_y, test_X = get_data(raw_dir=RAW_DIR)
-    train_df = pd.concat([train_X, train_y], axis=1)
+    X, y, X_unlabeled = get_preprocessed_data(config_file, TEXT_COLS)
 
-    output = make_prediction(train_df, test_X, model_packs_ensemble, feature_extractors, start_year=2017, end_year=2019,debug=True)
+
+    output = make_prediction(train_df, X_unlabeled, model_packs_ensemble, feature_extractors, start_year=2017, end_year=2019,debug=True)
