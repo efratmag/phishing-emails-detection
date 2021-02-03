@@ -12,6 +12,14 @@ stop_words = set(stopwords.words('english'))
 
 
 def count_common_words_in_subject(df, labels):
+    """
+    :param df: raw training dataset
+    :param labels:
+    :return: common words in email subject for phishing emails and ham emails
+    """
+    df = df.replace(np.nan, '', regex=True) # replace all missing values with empty string
+    df['Subject_lower'] = df['Subject'].apply(lambda x: x.lower())
+
     phish_words_subject = Counter(" ".join(df.loc[df[df[LABEL_COL]==1].index,'Subject_lower']).split()).most_common(20)
     most_common_words_phising_subject = [i[0] for i in phish_words_subject if not i[0] in stop_words]
     ham_words_subject = Counter(" ".join(df.loc[labels[labels[LABEL_COL] == 0].index, 'Subject_lower'])
@@ -24,6 +32,7 @@ def count_common_words_in_subject(df, labels):
                                             e not in most_common_words_phising_subject]
 
     return most_common_words_phising_subject_unique, most_common_words_ham_subject_unique
+
 
 
 # -*- coding: utf-8 -*-
@@ -43,9 +52,9 @@ def get_links_text(links_list):
     return text_in_links
 
 
-# define function for feature extraction
+def create_features(df, text_cols, common_words_subject_phishing, common_words_subject_ham):
+    # TODO: optimize parameters transfer of common subject words
 
-def feature_extraction(df, labels, text_cols):
     # define null values features
     cols_with_missing_values = df.columns[df.isnull().any()].tolist()
     for miss_col in cols_with_missing_values:
@@ -73,15 +82,15 @@ def feature_extraction(df, labels, text_cols):
             lambda x: any(('click' or 'link' or 'here' or 'login' or 'update')
                           in l for l in get_links_text(x)))
     # common words for phishing in subject
-    most_common_words_phishing_subject_unique, most_common_words_ham_subject_unique = \
-        count_common_words_in_subject(df, labels)
-    df['Subject_phish_words'] = df['Subject_lower'].str.contains('|'.join(most_common_words_phishing_subject_unique))
-    df['Subject_ham_words'] = df['Subject_lower'].str.contains('|'.join(most_common_words_ham_subject_unique))
+    df['Subject_phish_words'] = df['Subject_lower'].str.contains('|'.join(common_words_subject_phishing))
+    df['Subject_ham_words'] = df['Subject_lower'].str.contains('|'.join(common_words_subject_ham))
     # common words in phising emails content from https://www.hindawi.com/journals/jam/2014/425731/
     df['Content_phish_words_1'] = df['Content_lower'].str.contains('|'.join(Content_common_phish_words_1))
     df['Content_phish_words_2'] = df['Content_lower'].str.contains('|'.join(Content_common_phish_words_2))
     df['Content_phish_words_3'] = df['Content_lower'].str.contains('|'.join(Content_common_phish_words_3))
     df['Content_phish_words_4'] = df['Content_lower'].str.contains('|'.join(Content_common_phish_words_4))
     df['Content_phish_words_5'] = df['Content_lower'].str.contains('|'.join(Content_common_phish_words_5))
+
+    df.drop(cols_to_drop, axis=1)
 
     return df
