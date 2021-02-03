@@ -17,13 +17,14 @@ def count_common_words_in_subject(df, labels):
     :param labels:
     :return: common words in email subject for phishing emails and ham emails
     """
+    phish_idxs = labels[labels['Label'] == 1].index
+    ham_idxs = labels[labels['Label'] == 0].index
     df = df.replace(np.nan, '', regex=True) # replace all missing values with empty string
     df['Subject_lower'] = df['Subject'].apply(lambda x: x.lower())
 
-    phish_words_subject = Counter(" ".join(df.loc[df[df[LABEL_COL]==1].index,'Subject_lower']).split()).most_common(20)
+    phish_words_subject = Counter(" ".join(df.loc[phish_idxs,'Subject_lower']).split()).most_common(20)
     most_common_words_phising_subject = [i[0] for i in phish_words_subject if not i[0] in stop_words]
-    ham_words_subject = Counter(" ".join(df.loc[labels[labels[LABEL_COL] == 0].index, 'Subject_lower'])
-                                .split()).most_common(20)
+    ham_words_subject = Counter(" ".join(df.loc[ham_idxs, 'Subject_lower']).split()).most_common(20)
     most_common_words_ham_subject = [i[0] for i in ham_words_subject if not i[0] in stop_words]
 
     most_common_words_phising_subject_unique = [e for e in most_common_words_phising_subject if
@@ -54,7 +55,7 @@ def get_links_text(links_list):
 
 def create_features(df, text_cols, common_words_subject_phishing, common_words_subject_ham):
     # TODO: optimize parameters transfer of common subject words
-
+    df_extended = df.copy()
     # define null values features
     cols_with_missing_values = df.columns[df.isnull().any()].tolist()
     for miss_col in cols_with_missing_values:
@@ -75,7 +76,7 @@ def create_features(df, text_cols, common_words_subject_phishing, common_words_s
         # is english
         df[text_col+'_is_ascii'] = df[text_col+'_lower'].apply(is_ascii)
         # find links
-        df[text_col+'_all_links'] = df[text_col+'_lower'].apply(lambda x: BeautifulSoup(x, 'lxml').find_all('a'))
+        df[text_col+'_all_links'] = df[text_col+'_lower'].apply(lambda x: BeautifulSoup(x, 'html.parser').find_all('a'))
         df[text_col+'_n_links'] = df[text_col+'_all_links'].apply(lambda x: len(x))
         df[text_col+'_links_presence'] = df[text_col+'_n_links'] > 0
         df[text_col+'_suspicious_words_in_links_text'] = df[text_col+'_all_links'].apply(
@@ -93,4 +94,4 @@ def create_features(df, text_cols, common_words_subject_phishing, common_words_s
 
     df.drop(cols_to_drop, axis=1)
 
-    return df
+    return df_extended
