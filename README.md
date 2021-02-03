@@ -9,3 +9,6 @@ Acknowledgements
 J. Nazario. phishingcorpus homepage, Apr. 2006. http://monkey.org/
 
 Enron Email Dataset https://www.cs.cmu.edu/~enron/
+
+
+The Jupyter Notebook was used for the whole project including final predictions uploaded to Kaggle. 
